@@ -116,6 +116,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: riven
+      - PUID=1000
+      - PGID=1000
     volumes:
       - ./riven-db:/var/lib/postgresql/data/pgdata
     healthcheck:
