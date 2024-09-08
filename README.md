@@ -19,7 +19,7 @@ Before starting, ensure you have:
 Create the necessary directories and set the correct permissions:
 
 ```bash
-sudo mkdir -p /mnt/pzro/{plex/{config,library},zurg/data,riven/data,overseerr/data}
+sudo mkdir -p /mnt/pzro/{plex/{config,library/{movies,shows}},zurg/data,riven/data,overseerr/data}
 sudo chown -R $USER /mnt/pzro/
 ```
 
