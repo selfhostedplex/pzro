@@ -1,6 +1,22 @@
-version: '3.8'
+version: "0.0.1"
 
 services:
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    attach: false
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Bogota
+      - VERSION=docker
+      - PLEX_CLAIM=claim-token #PUT YOUR PLEX CLAIM TOKEN HERE
+    volumes:
+      - /mnt/pzro/plex/config:/config
+      - /mnt/pzro/:/mnt/pzro
+    restart: unless-stopped
+  
   zurg:
     image: ghcr.io/debridmediamanager/zurg-testing:latest    
     container_name: zurg
@@ -8,21 +24,21 @@ services:
     ports:
       - 9999:9999
     volumes:
-      - ./plex_update.sh:/app/plex_update.sh
-      - ./config.yml:/app/config.yml
-      - zurgdata:/app/data
+      - ./zurg/plex_update.sh:/app/plex_update.sh
+      - ./zurg/config.yml:/app/config.yml
+      - /mnt/pzro/zurg/data:/app/data
 
   rclone:
     image: rclone/rclone:latest
     container_name: rclone
     restart: unless-stopped
     environment:
-      TZ: Europe/Berlin
+      TZ: America/Bogota
       PUID: 1000
       PGID: 1000
     volumes:
-      - /mnt/zurg:/data:rshared # CHANGE /mnt/zurg WITH YOUR PREFERRED MOUNT PATH
-      - ./rclone.conf:/config/rclone/rclone.conf
+      - /mnt/pzro/zurg:/data:rshared 
+      - ./zurg/rclone.conf:/config/rclone/rclone.conf
     cap_add:
       - SYS_ADMIN
     security_opt:
@@ -32,6 +48,78 @@ services:
     depends_on:
       - zurg
     command: "mount zurg: /data --allow-other --allow-non-empty --dir-cache-time 10s --vfs-cache-mode full"
+   
+  overseerr:
+    image: sctx/overseerr:latest
+    container_name: overseerr
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=America/Bogota
+      - PORT=5055
+      - PUID=1000
+      - PGID=1000
+    ports:
+      - 5055:5055
+    volumes:
+      - /mnt/pzro/overseerr/data:/app/config
+    restart: unless-stopped
 
-volumes:
-  zurgdata:
+  riven-frontend:
+    image: spoked/riven-frontend:latest
+    container_name: riven-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    tty: true
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Bogota
+      - ORIGIN=http://localhost:3000 # set to the url or ip where the frontend is hosted
+      - BACKEND_URL=http://riven:8080
+      - DIALECT=postgres
+      - DATABASE_URL=postgres://postgres:postgres@riven-db/riven
+    depends_on:
+      riven:
+        condition: service_healthy
+
+  riven:
+    image: spoked/riven:latest
+    container_name: riven
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    tty: true
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - RIVEN_FORCE_ENV=true
+      - RIVEN_DATABASE_HOST=postgresql+psycopg2://postgres:postgres@riven-db/riven
+    healthcheck:
+      test: curl -s http://localhost:8080 >/dev/null || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - /mnt/pzro/riven/data:/riven/data
+      - /mnt/pzro:/mnt/pzro
+    depends_on:
+      riven_postgres:
+        condition: service_healthy
+
+  riven_postgres:
+    image: postgres:16.3-alpine3.20
+    container_name: riven-db
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: riven
+    volumes:
+      - ./riven-db:/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
